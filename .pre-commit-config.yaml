@@ -11,7 +11,7 @@ repos:
 
   # Python code analysis
   - repo: https://github.com/PyCQA/flake8
-    rev: 3.9.2
+    rev: 7.3.0
     hooks:
       - id: flake8
         args: [

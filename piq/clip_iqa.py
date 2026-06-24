@@ -47,7 +47,7 @@ class CLIPIQA(_Loss):
 
     Note:
         The initial computation of the metric is performed in `float32` and other dtypes (i.e. `float16`, `float64`)
-        are not supported. We preserve this behaviour for reproducibility perposes. Also, at the time of writing
+        are not supported. We preserve this behaviour for reproducibility purposes. Also, at the time of writing
         conv2d is not supported for `float16` tensors on CPU.
 
     Warning:
@@ -56,6 +56,7 @@ class CLIPIQA(_Loss):
 
     Args:
         data_range: Maximum value range of images (usually 1.0 or 255).
+        device: The device where tensors will be located.
 
     Examples:
         >>> from piq import CLIPIQA
@@ -73,7 +74,7 @@ class CLIPIQA(_Loss):
         Zhou, Kaiyang, et al. "Learning to prompt for vision-language models." International
         Journal of Computer Vision 130.9 (2022): 2337-2348.
     """
-    def __init__(self, data_range: Union[float, int] = 1.) -> None:
+    def __init__(self, data_range: Union[float, int] = 1., device: torch.device = torch.get_default_device()) -> None:
         super().__init__()
 
         self.feature_extractor = clip.load().eval()
@@ -83,13 +84,13 @@ class CLIPIQA(_Loss):
         # Pre-computed tokens for prompt pairs: "Good photo.", "Bad photo.".
         tokens = download_tensor(TOKENS_URL, os.path.expanduser("~/.cache/clip"))
 
-        anchors = self.feature_extractor.encode_text(tokens).float()
+        anchors = self.feature_extractor.encode_text(tokens).float().to(device)
         anchors = anchors / anchors.norm(dim=-1, keepdim=True)
 
         self.data_range = float(data_range)
-        default_mean = torch.tensor(OPENAI_CLIP_MEAN).view(1, 3, 1, 1)
-        default_std = torch.tensor(OPENAI_CLIP_STD).view(1, 3, 1, 1)
-        self.logit_scale = self.feature_extractor.logit_scale.exp()
+        default_mean = torch.tensor(OPENAI_CLIP_MEAN).view(1, 3, 1, 1).to(device)
+        default_std = torch.tensor(OPENAI_CLIP_STD).view(1, 3, 1, 1).to(device)
+        self.logit_scale = self.feature_extractor.logit_scale.exp().to(device)
 
         # Take advantage of Torch buffers. CLIPIQA.to(device) will move these to the device as well.
         self.register_buffer("anchors", anchors)
@@ -105,10 +106,12 @@ class CLIPIQA(_Loss):
                 - A 4D PyTorch tensor;
                 - The tensor might have flexible data ranges depending on `data_range` value;
                 - The tensor must have channels first format.
+                - The tensor must be located on the device specified during construction
 
         Returns:
             The value of CLI-IQA score in [0, 1] range.
         """
+        assert x_input.device == self.default_mean.device
         _validate_input([x_input], dim_range=(4, 4), data_range=(0., 255.), check_for_channels_first=True)
 
         x = x_input.clone()
